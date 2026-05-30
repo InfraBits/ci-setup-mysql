@@ -1,0 +1,43 @@
+name: Setup MySQL environment
+description: Configure the MySQL service container
+
+inputs:
+  username:
+    required: false
+    default: ""
+
+  password:
+    required: false
+    default: ""
+
+  schemas:
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Wait for database container
+      shell: bash
+      run: |
+        timeout 60 bash -c 'until mysqladmin ping -h 127.0.0.1 -u root --silent; do sleep 1; done'
+
+    - name: Create user
+      if: inputs.username != ''
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.password }}" ]; then echo "::add-mask::${{ inputs.password }}"; fi
+        mysql -h 127.0.0.1 -u root -e "CREATE USER \`${{ inputs.username }}\`@\`%\` IDENTIFIED BY '${{ inputs.password }}'"
+
+    - name: Create schemas and grant access
+      if: inputs.schemas != ''
+      shell: bash
+      run: |
+        IFS=',' read -ra schemas <<< "${{ inputs.schemas }}"
+        for schema in "${schemas[@]}"; do
+          schema="${schema// /}"
+          mysql -h 127.0.0.1 -u root -e "CREATE DATABASE \`${schema}\`"
+          if [[ -n "${{ inputs.username }}" ]]; then
+            mysql -h 127.0.0.1 -u root -e "GRANT ALL PRIVILEGES ON \`${schema}\`.* TO \`${{ inputs.username }}\`@\`%\`"
+          fi
+        done
